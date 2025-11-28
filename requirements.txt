@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+numpy
+opencv-python-headless
+mediapipe
+pydantic
+
+# Optional / development helpers (uncomment if needed)
+# python-dotenv
+# pytest
+# black
