@@ -155,12 +155,4 @@ Notes:
 3. Add unit tests for `back/app/utils.py::process_landmarks` with synthetic landmark sets (normal case, missing fields, single-hand/no-hand edge cases).
 4. In production, restrict CORS origins and serve static files via a proper web server; pin dependency versions in `requirements.txt`.
 
----
-
-If you want, I can now:
-- add frontend validation (auto-fill missing `z` and check 21 landmarks) before sending;
-- add the PowerShell download script to automate placing MediaPipe JS files in `front/vendor/mediapipe/`;
-- create a `README.md` with a shorter quickstart.
-
-Tell me which of the above you'd like me to implement next and I will apply the change.
 

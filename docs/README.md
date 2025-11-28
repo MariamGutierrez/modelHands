@@ -32,15 +32,3 @@ La especificación completa de la API, los formatos de payload y ejemplos se enc
 1. Siga las instrucciones de `docs/API_SPEC.md` para instalar dependencias y arrancar el servidor.
 2. Abra `http://127.0.0.1:8000/` en su navegador, permita el acceso a la cámara y pruebe la detección en la interfaz.
 3. Use el botón para enviar landmarks al endpoint `/extract` y ver la respuesta con las características calculadas.
-
-## Reemplazos y próximos pasos
-
-- Reemplace los nombres en la sección *Integrantes* por los nombres reales.
-- Si desea, puedo:
-	- completar automáticamente los nombres si me los proporciona;
-	- añadir un script PowerShell para descargar los archivos JS de MediaPipe a `front/vendor/mediapipe`;
-	- agregar validación en el frontend para asegurar 21 landmarks y rellenar `z` cuando falte.
-
----
-
-Documento generado automáticamente a partir del estado del repositorio; para más detalles consulte `docs/API_SPEC.md`.
