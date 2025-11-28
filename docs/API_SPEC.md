@@ -1,46 +1,46 @@
-# API & Project Specification
+# Especificación de API y Proyecto
 
-This document describes the endpoints, payload formats, data flow and running instructions for the project located at the repository root
+Este documento describe los endpoints, formatos de carga útil, flujo de datos e instrucciones de ejecución para el proyecto ubicado en la raíz del repositorio
 
-## Overview
+## Descripción General
 
-- Frontend: `front/` — static web UI that captures camera video, runs MediaPipe Hands in the browser (via `hands.js` + `camera_utils.js`) and sends detected landmarks to the backend.
-- Backend: `back/` — FastAPI server exposing an `/extract` endpoint that processes landmarks into features (normalized landmarks, finger angles, palm normal, centroid).
+- Frontend: `front/` — interfaz web estática que captura video de la cámara, ejecuta MediaPipe Hands en el navegador (a través de `hands.js` + `camera_utils.js`) y envía los puntos de referencia detectados al backend.
+- Backend: `back/` — servidor FastAPI que expone un endpoint `/extract` que procesa los puntos de referencia en características (puntos de referencia normalizados, ángulos de dedos, normal de palma, centroide).
 
-This spec covers:
-- API endpoints and request/response shapes
-- Frontend→Backend integration contract
-- How to run locally
-- Notes about common runtime issues and debugging tips
+Esta especificación cubre:
+- Endpoints de API y formas de solicitud/respuesta
+- Contrato de integración Frontend→Backend
+- Cómo ejecutar localmente
+- Notas sobre problemas comunes en tiempo de ejecución y consejos de depuración
 
 ---
 
-## API endpoints
+## Endpoints de API
 
 ### POST /extract
 
-Description: Accepts detected landmarks (from the client) and returns processed features (normalization, angles, palm normal, centroid). The endpoint also returns structured error information when processing fails.
+Descripción: Acepta puntos de referencia detectados (del cliente) y devuelve características procesadas (normalización, ángulos, normal de palma, centroide). El endpoint también devuelve información de error estructurada cuando el procesamiento falla.
 
-Request Content-Type: `application/json`
+Content-Type de Solicitud: `application/json`
 
-Request body (JSON) - `CapturePayload`:
+Cuerpo de la solicitud (JSON) - `CapturePayload`:
 
-- sign_id: string — unique id for capture (example: `sign_163...`)
-- type: string — e.g. `hand`
-- device_id: string — device source e.g. `web_camera`
+- sign_id: string — identificador único para la captura (ejemplo: `sign_163...`)
+- type: string — por ejemplo, `hand`
+- device_id: string — fuente del dispositivo, por ejemplo, `web_camera`
 - timestamp: string (ISO 8601)
-- landmarks: array of landmarks (optional if you plan to send frames instead)
-- pose_anchors: object with anchor points (optional)
+- landmarks: array de puntos de referencia (opcional si planea enviar frames en su lugar)
+- pose_anchors: objeto con puntos de anclaje (opcional)
 
-Landmark object (each element in `landmarks`):
+Objeto Landmark (cada elemento en `landmarks`):
 
 - id: int
-- x: float  (normalized 0..1 in MediaPipe coordinates)
-- y: float  (normalized 0..1)
-- z: float  (relative depth, can be small or missing — backend tolerates missing z)
+- x: float  (normalizado 0..1 en coordenadas de MediaPipe)
+- y: float  (normalizado 0..1)
+- z: float  (profundidad relativa, puede ser pequeño o faltar — el backend tolera z faltante)
 - visibility: float (0..1)
 
-Example payload:
+Carga útil de ejemplo:
 
 {
 	"sign_id": "sign_1764344190558",
@@ -49,7 +49,7 @@ Example payload:
 	"timestamp": "2025-11-28T15:36:30.558Z",
 	"landmarks": [
 		{"id":0,"x":0.67,"y":0.53,"z":-0.00000058,"visibility":1},
-		... (21 items) ...
+		... (21 elementos) ...
 	],
 	"pose_anchors": {
 		"nose": {"x":0.67, "y":0.53},
@@ -58,61 +58,61 @@ Example payload:
 	}
 }
 
-Successful response (200 OK):
+Respuesta exitosa (200 OK):
 
 {
 	"status": "OK",
 	"features": {
 		"landmarks_norm": [[...], ...],
-		"angles": [/* five angles in degrees */],
+		"angles": [/* cinco ángulos en grados */],
 		"palm_normal": [nx, ny, nz],
 		"centroid": {"x":..., "y":..., "z":...}
 	}
 }
 
-Error response (example 400/500):
+Respuesta de error (ejemplo 400/500):
 
 {
 	"status": "ERROR",
-	"detail": "Error message or stack snippet"
+	"detail": "Mensaje de error o fragmento de pila"
 }
 
-Notes:
-- The backend expects landmarks as a list of objects; the server converts Pydantic models to plain dicts and is tolerant to missing `z` values.
-- The backend currently only accepts landmarks in this endpoint. There is a Python helper `mediapipe_worker.py` that can extract landmarks from an image frame (server-side) if you want to extend the API to accept base64 frames.
+Notas:
+- El backend espera puntos de referencia como una lista de objetos; el servidor convierte modelos Pydantic a dicts simples y es tolerante con valores `z` faltantes.
+- El backend actualmente solo acepta puntos de referencia en este endpoint. Hay un asistente de Python `mediapipe_worker.py` que puede extraer puntos de referencia de un frame de imagen (del lado del servidor) si desea ampliar la API para aceptar frames codificados en base64.
 
 ---
 
-## Data flow and processing (high level)
+## Flujo de datos y procesamiento (nivel alto)
 
-1. Frontend captures camera video and runs MediaPipe Hands in the browser using `hands.js`.
-2. For each frame MediaPipe produces `multiHandLandmarks`. The frontend collects landmarks (id,x,y,z,visibility) and a few pose anchors (nose and approximated shoulder points) and draws the results on a `canvas` overlay.
-3. On user action ("Enviar landmarks"), frontend sends `CapturePayload` JSON to the backend `/extract` endpoint.
-4. Backend code (`back/app/utils.py`) receives the list:
-	 - `to_np(...)` converts landmarks to Nx3 NumPy array (x,y,z). This function is robust: accepts dicts or pydantic objects and fills missing z with 0.0.
-	 - `normalize_landmarks(...)` normalizes coordinates either anthropometrically (using shoulder distance if available) or by centroid+scale.
-	 - compute finger angles (MCP-PIP-DIP) for index/middle/ring/pinky/thumb
-	 - compute palm normal (cross product of vectors defined by wrist/index/pinky)
-	 - compute centroid
-5. Server returns features JSON.
-
----
-
-## Files of interest (brief)
-
-- `front/index.html` — UI, loads MediaPipe scripts (tries `/static/vendor/mediapipe/*` first), includes the status indicator, video and canvas.
-- `front/app.js` — main client logic: initializes MediaPipe, handles camera (Camera API with getUserMedia fallback), draws landmarks, builds and sends payloads.
-- `front/styles.css` — UI styles and status indicator styles.
-- `back/app/main.py` — FastAPI app, static files mounting at `/static`, CORS enabled (dev), endpoint `/extract`.
-- `back/app/schemas.py` — Pydantic models (validation).
-- `back/app/utils.py` — core processing: `to_np`, normalization, angle calc, palm normal, `process_landmarks`.
-- `back/app/mediapipe_worker.py` — helper to extract landmarks from an image frame using MediaPipe in Python (useful if server-side frame processing is desired).
+1. El frontend captura video de la cámara y ejecuta MediaPipe Hands en el navegador usando `hands.js`.
+2. Para cada frame, MediaPipe produce `multiHandLandmarks`. El frontend recopila puntos de referencia (id, x, y, z, visibility) y algunos puntos de anclaje de pose (nariz y puntos de hombro aproximados) y dibuja los resultados en una superposición `canvas`.
+3. En la acción del usuario ("Enviar landmarks"), el frontend envía JSON `CapturePayload` al endpoint `/extract` del backend.
+4. Código del backend (`back/app/utils.py`) recibe la lista:
+	 - `to_np(...)` convierte puntos de referencia a un array NumPy Nx3 (x, y, z). Esta función es robusta: acepta dicts u objetos pydantic y completa z faltante con 0.0.
+	 - `normalize_landmarks(...)` normaliza coordenadas ya sea antropométricamente (usando distancia de hombro si está disponible) o por centroide+escala.
+	 - calcula ángulos de dedos (MCP-PIP-DIP) para índice/medio/anular/meñique/pulgar
+	 - calcula normal de palma (producto cruzado de vectores definidos por muñeca/índice/meñique)
+	 - calcula centroide
+5. El servidor devuelve JSON de características.
 
 ---
 
-## How to run locally
+## Archivos de interés (breve)
 
-1. Create and activate a Python virtual environment and install required packages. Example (Windows PowerShell):
+- `front/index.html` — interfaz de usuario, carga scripts de MediaPipe (intenta `/static/vendor/mediapipe/*` primero), incluye el indicador de estado, video y canvas.
+- `front/app.js` — lógica principal del cliente: inicializa MediaPipe, maneja la cámara (Camera API con fallback getUserMedia), dibuja puntos de referencia, construye y envía cargas útiles.
+- `front/styles.css` — estilos de interfaz de usuario e indicador de estado.
+- `back/app/main.py` — aplicación FastAPI, montaje de archivos estáticos en `/static`, CORS habilitado (desarrollo), endpoint `/extract`.
+- `back/app/schemas.py` — modelos Pydantic (validación).
+- `back/app/utils.py` — procesamiento principal: `to_np`, normalización, cálculo de ángulos, normal de palma, `process_landmarks`.
+- `back/app/mediapipe_worker.py` — asistente para extraer puntos de referencia de un frame de imagen usando MediaPipe en Python (útil si se desea procesamiento de frames del lado del servidor).
+
+---
+
+## Cómo ejecutar localmente
+
+1. Cree y active un entorno virtual de Python e instale los paquetes requeridos. Ejemplo (Windows PowerShell):
 
 ```powershell
 python -m venv venv
@@ -120,39 +120,39 @@ venv\Scripts\Activate.ps1
 pip install fastapi uvicorn numpy opencv-python mediapipe pydantic
 ```
 
-2. Start the backend server (from repository root):
+2. Inicie el servidor backend (desde la raíz del repositorio):
 
 ```powershell
 uvicorn back.app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-3. Open the frontend in your browser:
+3. Abra el frontend en su navegador:
 
-- Visit: `http://127.0.0.1:8000/` — the server serves `front/index.html` and static assets are available under `/static/`.
+- Visite: `http://127.0.0.1:8000/` — el servidor sirve `front/index.html` y los activos estáticos están disponibles en `/static/`.
 
-4. Allow camera access. The page will run MediaPipe in the browser. Press "Enviar landmarks" to send data to the server.
+4. Permita el acceso a la cámara. La página ejecutará MediaPipe en el navegador. Presione "Enviar landmarks" para enviar datos al servidor.
 
-Notes:
-- It's recommended to download the MediaPipe JS files (`camera_utils.js`, `drawing_utils.js`, `hands.js`) into `front/vendor/mediapipe/` and serve them from `/static/vendor/mediapipe/` to avoid browser Tracking Prevention warnings when loading from CDN.
-
----
-
-## Debugging notes & common issues
-
-- 405 Method Not Allowed when POSTing to `/extract` — cause: static files were mounted at root `/` and intercepted API routes (fixed: static now mounted at `/static`).
-- ReferenceError: `Hands` / `FilesetResolver` — cause: mixing MediaPipe Tasks API with classic `hands.js` API. Fix: use the classic `Hands` API (as implemented in `front/app.js`).
-- CORS / origin mismatch (`localhost` vs `127.0.0.1`) — set `BACKEND_URL` in the client to `window.location.origin` or ensure same origin. Backend sets CORS with `allow_origins=["*"]` for development.
-- Tracking Prevention warnings for cdn.jsdelivr.net — download vendor files and serve them from your origin to reduce these warnings.
-- TypeError 'Landmark' object is not subscriptable — cause: backend tried to index Pydantic model instances as dicts; fixed by converting models to dicts and making `to_np` robust.
-- KeyError 'z' — cause: some pose anchors included only x,y (no z). `normalize_landmarks` now accepts missing z (defaults to 0.0) and falls back to centroid normalization if key anchors lack x/y.
+Notas:
+- Se recomienda descargar los archivos JavaScript de MediaPipe (`camera_utils.js`, `drawing_utils.js`, `hands.js`) en `front/vendor/mediapipe/` y servirlos desde `/static/vendor/mediapipe/` para evitar advertencias de Prevención de Seguimiento del navegador al cargar desde CDN.
 
 ---
 
-## Suggested next improvements
+## Notas de depuración y problemas comunes
 
-1. Frontend validation: ensure each landmark has `x` and `y` before sending; set `z` to 0.0 if missing and require 21 landmarks (or warn otherwise).
-2. Add a small `scripts/download_mediapipe.ps1` to fetch the three MediaPipe JS files into `front/vendor/mediapipe`.
-3. Add unit tests for `back/app/utils.py::process_landmarks` with synthetic landmark sets (normal case, missing fields, single-hand/no-hand edge cases).
-4. In production, restrict CORS origins and serve static files via a proper web server; pin dependency versions in `requirements.txt`.
+- 405 Method Not Allowed al hacer POST a `/extract` — causa: los archivos estáticos se montaron en la raíz `/` e interceptaron rutas de API (corregido: ahora estáticos montados en `/static`).
+- ReferenceError: `Hands` / `FilesetResolver` — causa: mezclar API de MediaPipe Tasks con API clásica `hands.js`. Solución: usar la API `Hands` clásica (como se implementa en `front/app.js`).
+- CORS / falta de coincidencia de origen (`localhost` vs `127.0.0.1`) — establezca `BACKEND_URL` en el cliente a `window.location.origin` o asegure el mismo origen. El backend configura CORS con `allow_origins=["*"]` para desarrollo.
+- Advertencias de Prevención de Seguimiento para cdn.jsdelivr.net — descargar archivos de proveedores y servirlos desde su origen para reducir estas advertencias.
+- TypeError 'Landmark' object is not subscriptable — causa: el backend intentó indexar instancias de modelo Pydantic como dicts; corregido convirtiendo modelos a dicts e hiciendo `to_np` robusto.
+- KeyError 'z' — causa: algunos anclajes de pose incluían solo x, y (sin z). `normalize_landmarks` ahora acepta z faltante (por defecto a 0.0) y recurre a normalización de centroide si los anclajes clave carecen de x/y.
+
+---
+
+## Mejoras sugeridas
+
+1. Validación de frontend: asegúrese de que cada punto de referencia tenga `x` e `y` antes de enviar; establezca `z` a 0.0 si falta y requiera 21 puntos de referencia (o advierta de lo contrario).
+2. Agregue un pequeño `scripts/download_mediapipe.ps1` para obtener los tres archivos JS de MediaPipe en `front/vendor/mediapipe`.
+3. Agregue pruebas unitarias para `back/app/utils.py::process_landmarks` con conjuntos de puntos de referencia sintéticos (caso normal, campos faltantes, casos extremos de mano única/sin mano).
+4. En producción, restrinja orígenes CORS y sirva archivos estáticos a través de un servidor web adecuado; fije versiones de dependencia en `requirements.txt`.
 
 
